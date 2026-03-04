@@ -24,10 +24,10 @@ from underwriting.application.buro_service import obtener_buro_moffin_por_rfc  #
 def _bootstrap_env_from_secrets() -> None:
     """Expose secrets as env vars so existing services keep working."""
     load_dotenv()
-
     for key in ["SYNTAGE_API_KEY", "SYNTAGE_BASE_URL", "MOFFIN_TOKEN"]:
-        if key in st.secrets and st.secrets.get(key):
-            os.environ[key] = str(st.secrets.get(key)).strip()
+        val = st.secrets.get(key)
+        if val:
+            os.environ[key] = str(val).strip()
 
 
 @st.cache_resource
@@ -120,7 +120,6 @@ def sat_page() -> None:
 
     cols = st.columns(3)
     items = list(risk.items())
-
     for i, (k, v) in enumerate(items[:9]):
         with cols[i % 3]:
             st.metric(k, "" if v is None else str(v))
@@ -156,8 +155,6 @@ def buro_page() -> None:
         st.info("No hay información disponible.")
         return
 
-    es_pm = len(rfc) == 12
-
     fecha_consulta = df_buro["Fecha Consulta"].iloc[0] if "Fecha Consulta" in df_buro.columns else "N/A"
     st.metric("Fecha de consulta", str(fecha_consulta))
 
@@ -174,11 +171,8 @@ def main() -> None:
 
     _bootstrap_env_from_secrets()
 
-    # SAFE LOGIN: allow app to run even if secrets not configured
-    try:
-        user = require_login()
-    except Exception:
-        user = "Guest"
+    # REQUIRE LOGIN (no Guest bypass)
+    user = require_login()
 
     with st.sidebar:
         st.write(f"**Usuario:** {user}")
