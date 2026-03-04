@@ -4,13 +4,12 @@ import hmac
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-import bcrypt
 import streamlit as st
 
 
 @dataclass(frozen=True)
 class AuthConfig:
-    # username -> bcrypt hash string
+    # username -> plain password
     users: Dict[str, str]
 
 
@@ -20,10 +19,8 @@ def _get_auth_config() -> AuthConfig:
     if users is None:
         users = {}
     if not isinstance(users, dict):
-        # misconfigured secrets
         users = {}
 
-    # normalize keys/values to str
     norm: Dict[str, str] = {}
     for k, v in users.items():
         if k is None or v is None:
@@ -33,11 +30,10 @@ def _get_auth_config() -> AuthConfig:
     return AuthConfig(users=norm)
 
 
-def _verify_password(password: str, bcrypt_hash: str) -> bool:
+def _verify_password(password: str, stored_password: str) -> bool:
     try:
-        pw = password.encode("utf-8")
-        hh = bcrypt_hash.encode("utf-8")
-        return bcrypt.checkpw(pw, hh)
+        # constant-time comparison
+        return hmac.compare_digest(password, stored_password)
     except Exception:
         return False
 
@@ -58,7 +54,7 @@ def require_login() -> Optional[str]:
     if not cfg.users:
         st.error(
             "No hay usuarios configurados en secrets.\n\n"
-            "Agrega usuarios en `.streamlit/secrets.toml` (ver README)."
+            "Agrega usuarios en `.streamlit/secrets.toml`."
         )
         st.stop()
 
@@ -69,15 +65,14 @@ def require_login() -> Optional[str]:
 
     if submitted:
         username = (username or "").strip()
-        bcrypt_hash = cfg.users.get(username)
-        ok = bool(bcrypt_hash) and _verify_password(password or "", bcrypt_hash)
+        stored_password = cfg.users.get(username)
+        ok = bool(stored_password) and _verify_password(password or "", stored_password)
 
         if ok:
             st.session_state["auth_user"] = username
             st.rerun()
         else:
-            # use constant-time comparison for the "user exists" branch to reduce leakage
-            _ = hmac.compare_digest("x" * 60, (bcrypt_hash or "")[:60].ljust(60, "x"))
+            _ = hmac.compare_digest("x" * 60, (stored_password or "")[:60].ljust(60, "x"))
             st.error("Usuario o contraseña incorrectos")
 
     st.stop()
